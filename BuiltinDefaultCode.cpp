@@ -46,8 +46,22 @@
  *     - PWM 1/3 - Connected to "left" drive motor(s)
  *     - PWM 2/4 - Connected to "right" drive motor(s)
  */
+
 class BuiltinDefaultCode : public IterativeRobot
 {
+
+	//OUR VARIABLES
+	bool saveJag;
+	int saveJagWait;
+	
+	
+	
+	
+	
+	//-------------------
+	
+	
+	
 	// Declare variable for the robot drive system
 	RobotDrive *m_robotDrive;		// robot will use PWM 1-4 for drive motors
 	
@@ -59,6 +73,13 @@ class BuiltinDefaultCode : public IterativeRobot
 	// Declare variables for the two joysticks being used
 	Joystick *m_rightStick;			// joystick 1 (arcade stick or right tank stick)
 	Joystick *m_leftStick;			// joystick 2 (tank left stick)
+	float m_rightStickOld;      // previous stick values
+	float m_leftStickOld;
+	
+	Jaguar* left_motor;				
+	Jaguar* right_motor;
+	
+	
 	
 	static const int NUM_JOYSTICK_BUTTONS = 16;
 	bool m_rightStickButtonState[(NUM_JOYSTICK_BUTTONS+1)];
@@ -68,11 +89,6 @@ class BuiltinDefaultCode : public IterativeRobot
 	static const int NUM_SOLENOIDS = 8;
 	Solenoid *m_solenoids[(NUM_SOLENOIDS+1)];
 
-	enum {							// drive mode selection
-		UNINITIALIZED_DRIVE = 0,
-		ARCADE_DRIVE = 1,
-		TANK_DRIVE = 2
-	} m_driveMode;
 	
 	// Local variables to count the number of periodic loops performed
 	UINT32 m_autoPeriodicLoops;
@@ -90,9 +106,27 @@ public:
 	BuiltinDefaultCode(void)	{
 		printf("BuiltinDefaultCode Constructor Started\n");
 
-		// Create a robot using standard right/left robot drive on PWMS 1, 2, 3, and #4
-		m_robotDrive = new RobotDrive(1, 3, 2, 4);
+		//OUR VARIABLES
+		saveJag = false;
+		
+		saveJagWait = 0;
+		
+			
+		
+		
+		
+		//--------
+		
+		
+		// Create a robot using standard right/left robot drive on PWMS 1, 2
+		m_robotDrive = new RobotDrive(1, 2);
+		
+		
 
+		//Initialize jaguars
+		left_motor = new Jaguar(1);
+		right_motor = new Jaguar(2);
+		
 		// Acquire the Driver Station object
 		m_ds = DriverStation::GetInstance();
 		m_priorPacketNumber = 0;
@@ -101,6 +135,9 @@ public:
 		// Define joysticks being used at USB port #1 and USB port #2 on the Drivers Station
 		m_rightStick = new Joystick(1);
 		m_leftStick = new Joystick(2);
+		m_rightStickOld = m_rightStick->GetY();
+		m_leftStickOld = m_leftStick->GetY();
+		
 
 		// Iterate over all the buttons on each joystick, setting state to false for each
 		UINT8 buttonNum = 1;						// start counting buttons at button 1
@@ -115,8 +152,6 @@ public:
 			m_solenoids[solenoidNum] = new Solenoid(solenoidNum);
 		}
 
-		// Set drive mode to uninitialized
-		m_driveMode = UNINITIALIZED_DRIVE;
 
 		// Initialize counters to record the number of loops completed in autonomous and teleop modes
 		m_autoPeriodicLoops = 0;
@@ -151,7 +186,6 @@ public:
 	void TeleopInit(void) {
 		m_telePeriodicLoops = 0;				// Reset the loop counter for teleop mode
 		m_dsPacketsReceivedInCurrentSecond = 0;	// Reset the number of dsPackets in current second
-		m_driveMode = UNINITIALIZED_DRIVE;		// Set drive mode to uninitialized
 		ClearSolenoidLEDsKITT();
 	}
 
@@ -169,7 +203,7 @@ public:
 		if (GetClock() > printSec) {
 			// Move the cursor back to the previous line and clear it.
 			printf("\x1b[1A\x1b[2K");
-			printf("Disabled seconds: %d\r\n", printSec - startSec);			
+			printf("Disabled seconds: %d\r\n", printSec - startSec);
 			printSec++;
 		}
 	}
@@ -197,8 +231,20 @@ public:
 		}
 		*/
 	}
-
 	
+	//OUR FUNCTIONS-----------------------------------------
+	
+	bool wait(int loops)
+	{
+		printf("We are waiting: %d\n", loops);
+		m_robotDrive->Drive(0,0);
+		if(loops>0)
+			return true;
+		else
+			return false;
+	}
+
+	//-----------------------------------------------------------------
 	void TeleopPeriodic(void) {
 		// increment the number of teleop periodic loops completed
 		m_telePeriodicLoops++;
@@ -212,7 +258,8 @@ public:
 			 * has been received by the Driver Station.  Any code which needs new information
 			 * from the DS should go in here
 			 */
-			 
+			
+			
 			m_dsPacketsReceivedInCurrentSecond++;					// increment DS packets received
 						
 			// put Driver Station-dependent code here
@@ -221,24 +268,38 @@ public:
 			DemonstrateJoystickButtons(m_rightStick, m_rightStickButtonState, "Right Stick", &m_solenoids[1]);
 			DemonstrateJoystickButtons(m_leftStick, m_leftStickButtonState, "Left Stick ", &m_solenoids[5]);
 		
-			// determine if tank or arcade mode, based upon position of "Z" wheel on kit joystick
-			if (m_rightStick->GetZ() <= 0) {    // Logitech Attack3 has z-polarity reversed; up is negative
-				// use arcade drive
-				m_robotDrive->ArcadeDrive(m_rightStick);			// drive with arcade style (use right stick)
-				if (m_driveMode != ARCADE_DRIVE) {
-					// if newly entered arcade drive, print out a message
-					printf("Arcade Drive\n");
-					m_driveMode = ARCADE_DRIVE;
-				}
-			} else {
-				// use tank drive
-				m_robotDrive->TankDrive(m_leftStick, m_rightStick);	// drive with tank style
-				if (m_driveMode != TANK_DRIVE) {
-					// if newly entered tank drive, print out a message
-					printf("Tank Drive\n");
-					m_driveMode = TANK_DRIVE;
-				}
-			} 
+			//Tank drive googog
+			m_robotDrive->TankDrive(m_leftStick, m_rightStick);	// drive with tank style
+			
+			//Prevent jaguars from burning out when switching between forward and reverse (maybe)
+			if ((((m_leftStickOld<0)&&(m_leftStick->GetY()>0))||((m_leftStickOld>0)&&(m_leftStick->GetY()<0)))
+				&&	(((m_rightStickOld<0)&&(m_rightStick->GetY()>0))||((m_rightStickOld>0)&&(m_rightStick->GetY()<0))))
+			{
+				saveJag = true;
+				saveJagWait=10000;
+			}
+			
+			
+			if(saveJag)
+			{
+				printf("TeleopP--> robot stopped momentarilly");
+				saveJag = wait(saveJagWait--);
+				
+				
+			}
+				
+			//win
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			 
 		/*
 		}  // if (m_ds->GetPacketNumber()...
 		*/
@@ -402,6 +463,8 @@ public:
 		solenoids[1]->Set( (displayNumber & 4) != 0);
 		solenoids[0]->Set( (displayNumber & 8) != 0);
 	}
+	
+	
 			
 };
 
